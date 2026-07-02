@@ -12,8 +12,11 @@ grants a separate commercial license.
 
 ```bash
 pip install prismax
-export PRISMAX_API_KEY="pxa_your_api_key"
+export PRISMAX_API_KEY="pxu_your_upload_api_key"
 ```
+
+Use a PrismaX upload API key with the `pxu_` prefix. Download API keys are not
+valid for uploads.
 
 ```python
 import prismax
@@ -35,7 +38,7 @@ result = prismax.upload(
     "./data",
     task_id=123,
     machine_id="machine_id",
-    api_key="pxa_your_api_key",
+    api_key="pxu_your_upload_api_key",
 )
 ```
 
