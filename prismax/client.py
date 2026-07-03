@@ -2,13 +2,29 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse
 
 import requests
 
-from .errors import PrismaxApiError, PrismaxAuthError
+from .errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 
 
 DEFAULT_BASE_URL = "https://data.prismaxserver.com"
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _validate_base_url(base_url):
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https"):
+        raise PrismaxValidationError(
+            f"base_url must start with https:// (got: {base_url!r})."
+        )
+    host = parsed.hostname or ""
+    if parsed.scheme != "https" and host not in LOCAL_HOSTS:
+        raise PrismaxValidationError(
+            "base_url must use https:// for non-local hosts "
+            f"(got: {base_url!r}). Plain http is only allowed for localhost."
+        )
 
 
 class PrismaXClient:
@@ -16,7 +32,8 @@ class PrismaXClient:
         self.api_key = api_key or os.getenv("PRISMAX_API_KEY")
         if not self.api_key:
             raise PrismaxAuthError("api_key is required or PRISMAX_API_KEY must be set.")
-        self.base_url = (base_url or os.getenv("PRISMAX_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+        _validate_base_url(self.base_url)
         self.timeout = timeout
         self.concurrency = max(1, int(concurrency))
         self.retries = max(1, int(retries))
@@ -29,13 +46,17 @@ class PrismaXClient:
 
     def _request(self, method, path, **kwargs):
         url = f"{self.base_url}{path}"
-        response = requests.request(
-            method,
-            url,
-            headers=self._headers(),
-            timeout=self.timeout,
-            **kwargs,
-        )
+        try:
+            response = requests.request(
+                method,
+                url,
+                headers=self._headers(),
+                timeout=self.timeout,
+                **kwargs,
+            )
+        except requests.RequestException as exc:
+            raise PrismaxApiError(f"PrismaX API request failed: {exc}") from exc
+
         try:
             payload = response.json()
         except ValueError:
@@ -46,13 +67,13 @@ class PrismaXClient:
             raise PrismaxApiError(message)
         return payload.get("data", payload)
 
-    def create_upload_session(self, *, task_id, machine_id, files):
+    def create_upload_session(self, *, task_id, serial_number, files):
         return self._request(
             "POST",
             "/v1/data/upload-sessions",
             json={
                 "task_id": task_id,
-                "machine_id": machine_id,
+                "serial_number": serial_number,
                 "files": files,
             },
         )

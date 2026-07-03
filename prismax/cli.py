@@ -15,7 +15,7 @@ def main(argv=None):
     upload_parser = subparsers.add_parser("upload")
     upload_parser.add_argument("folder")
     upload_parser.add_argument("--task-id", required=True, type=int)
-    upload_parser.add_argument("--machine-id", required=True)
+    upload_parser.add_argument("--serial-number", required=True)
     upload_parser.add_argument("--api-key")
     upload_parser.add_argument("--base-url")
     upload_parser.add_argument("--wait", action="store_true")
@@ -42,7 +42,7 @@ def main(argv=None):
         result = upload(
             args.folder,
             task_id=args.task_id,
-            machine_id=args.machine_id,
+            serial_number=args.serial_number,
             api_key=args.api_key,
             base_url=args.base_url,
             wait=args.wait,

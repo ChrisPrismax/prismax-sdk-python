@@ -24,7 +24,7 @@ def upload(
     folder,
     *,
     task_id,
-    machine_id,
+    serial_number,
     api_key=None,
     base_url=None,
     wait=False,
@@ -43,20 +43,23 @@ def upload(
     errors = validate_mcap_mp4(files)
     if errors:
         raise PrismaxValidationError("; ".join(errors))
+    if not serial_number:
+        raise PrismaxValidationError("serial_number is required.")
 
     keys = episode_keys(files)
     session = client.create_upload_session(
         task_id=task_id,
-        machine_id=machine_id,
+        serial_number=serial_number,
         files=_build_files_payload(files, keys),
     )
+    resolved_machine_id = session.get("machine_id")
     _upload_session_files(
         client=client,
         session=session,
         files=files,
         episode_keys_value=keys,
         task_id=task_id,
-        machine_id=machine_id,
+        machine_id=resolved_machine_id,
     )
 
     if wait:

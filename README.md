@@ -21,7 +21,7 @@ valid for uploads.
 ```python
 import prismax
 
-result = prismax.upload("./data", task_id=123, machine_id="machine_id")
+result = prismax.upload("./data", task_id=123, serial_number="robot_serial_number")
 print(result["upload_id"])
 ```
 
@@ -37,7 +37,7 @@ import prismax
 result = prismax.upload(
     "./data",
     task_id=123,
-    machine_id="machine_id",
+    serial_number="robot_serial_number",
     api_key="pxu_your_upload_api_key",
 )
 ```
@@ -60,7 +60,7 @@ and one environment video filename containing neither.
 ## CLI
 
 ```bash
-prismax upload ./data --task-id 123 --machine-id machine_id
+prismax upload ./data --task-id 123 --serial-number robot_serial_number
 prismax status 123
 ```
 
@@ -68,8 +68,8 @@ Use `--wait` to wait for the worker to finish. The default maximum wait time is
 30 minutes.
 
 ```bash
-prismax upload ./data --task-id 123 --machine-id machine_id --wait
-prismax upload ./data --task-id 123 --machine-id machine_id --wait --max-wait 3600
+prismax upload ./data --task-id 123 --serial-number robot_serial_number --wait
+prismax upload ./data --task-id 123 --serial-number robot_serial_number --wait --max-wait 3600
 ```
 
 ## Status and Resume
@@ -93,11 +93,8 @@ prismax resume 123 ./data
 ## Custom API Base URL
 
 The SDK defaults to the PrismaX production data API. For beta or local testing,
-set `PRISMAX_BASE_URL` or pass `base_url`.
-
-```bash
-export PRISMAX_BASE_URL="https://data.prismaxserver.com"
-```
+pass `base_url` explicitly. It must use `https://`; plain `http://` is only
+allowed for `localhost` / `127.0.0.1`.
 
 ```python
 import prismax
@@ -105,7 +102,7 @@ import prismax
 prismax.upload(
     "./data",
     task_id=123,
-    machine_id="machine_id",
+    serial_number="robot_serial_number",
     base_url="http://127.0.0.1:8082",
 )
 ```
@@ -116,7 +113,7 @@ prismax.upload(
 import prismax
 
 try:
-    prismax.upload("./data", task_id=123, machine_id="machine_id")
+    prismax.upload("./data", task_id=123, serial_number="robot_serial_number")
 except prismax.PrismaxValidationError as exc:
     print(f"Invalid upload folder: {exc}")
 except prismax.PrismaxApiError as exc:
