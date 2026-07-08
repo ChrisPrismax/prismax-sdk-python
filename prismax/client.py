@@ -10,7 +10,8 @@ import requests
 from .errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 
 
-DEFAULT_BASE_URL = "https://data.prismaxserver.com"
+# TODO: switch back to https://data.prismaxserver.com after beta SDK validation.
+DEFAULT_BASE_URL = "https://app-prismax-data-pipeline-beta-1053158761087.us-west1.run.app"
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 

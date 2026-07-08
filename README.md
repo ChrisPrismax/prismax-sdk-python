@@ -68,9 +68,6 @@ result = prismax.upload(
 
 You can also pass `task_id=123` instead of `scenario=...`.
 
-By default, the SDK uploads to the PrismaX production data API:
-`https://data.prismaxserver.com`.
-
 ## Expected Folder Structure
 
 ```text
