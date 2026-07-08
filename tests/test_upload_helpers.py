@@ -11,7 +11,7 @@ from prismax.client import PrismaXClient
 from prismax.manifest import build_manifest_payload, manifest_placeholder
 from prismax.errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 from prismax.scanner import episode_keys, scan_folder, select_primary_video_paths, validate_mcap_mp4
-from prismax.upload import upload, wait_for_upload
+from prismax.upload import resolve_task_id, upload, wait_for_upload
 
 
 class UploadHelperTests(unittest.TestCase):
@@ -319,6 +319,61 @@ class UploadHelperTests(unittest.TestCase):
 
         self.assertIn("Upload 999 was created", str(ctx.exception))
         self.assertIn("prismax resume 999", str(ctx.exception))
+
+    def test_resolve_task_id_accepts_task_id(self):
+        mock_client = Mock()
+
+        self.assertEqual(resolve_task_id(mock_client, task_id=12), 12)
+        mock_client.list_tasks.assert_not_called()
+
+    def test_resolve_task_id_matches_scenario_case_insensitive(self):
+        mock_client = Mock()
+        mock_client.list_tasks.return_value = [
+            {"task_id": 7, "scenario": "Pick and place packaged food items"},
+        ]
+
+        self.assertEqual(
+            resolve_task_id(mock_client, scenario="pick AND place packaged FOOD items"),
+            7,
+        )
+
+    def test_resolve_task_id_missing_scenario_reports_task_name(self):
+        mock_client = Mock()
+        mock_client.list_tasks.return_value = [
+            {"task_id": 7, "scenario": "Pick and place packaged food items"},
+        ]
+
+        with self.assertRaises(PrismaxValidationError) as ctx:
+            resolve_task_id(mock_client, scenario="missing task")
+
+        self.assertIn("No task found for scenario/task name", str(ctx.exception))
+        self.assertIn("Pick and place packaged food items", str(ctx.exception))
+
+    def test_upload_resolves_scenario_before_creating_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "1").mkdir()
+            (root / "1.mcap").write_bytes(b"mcap")
+            (root / "1" / "high.mp4").write_bytes(b"env")
+            (root / "1" / "left.mp4").write_bytes(b"left")
+            (root / "1" / "right.mp4").write_bytes(b"right")
+
+            mock_client = Mock()
+            mock_client.list_tasks.return_value = [
+                {"task_id": 12, "scenario": "Pick and place packaged food items"},
+            ]
+            mock_client.create_upload_session.return_value = {
+                "upload_id": 999,
+                "machine_id": "machine-1",
+                "signed_urls": [],
+            }
+            upload_module = importlib.import_module("prismax.upload")
+
+            with patch.object(upload_module, "PrismaXClient", return_value=mock_client):
+                upload(root, scenario="pick and place packaged food items", serial_number="serial", api_key="pxu_test")
+
+        mock_client.create_upload_session.assert_called_once()
+        self.assertEqual(mock_client.create_upload_session.call_args.kwargs["task_id"], 12)
 
     def test_base_url_rejects_remote_http(self):
         with self.assertRaises(PrismaxValidationError):

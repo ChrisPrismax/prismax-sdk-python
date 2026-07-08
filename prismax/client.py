@@ -96,6 +96,9 @@ class PrismaXClient:
             json={"files": files},
         )
 
+    def list_tasks(self):
+        return self._request("GET", "/data/tasks")
+
     def get_upload(self, upload_id):
         return self._request("GET", f"/v1/data/uploads/{upload_id}")
 

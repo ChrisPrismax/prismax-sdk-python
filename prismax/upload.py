@@ -21,10 +21,66 @@ def _build_files_payload(files, keys):
     return payload
 
 
+def _normalize_task_name(value):
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _task_display_name(task):
+    for key in ("scenario", "task_name", "name", "title"):
+        value = task.get(key)
+        if value:
+            return str(value)
+    return f"task_id {task.get('task_id')}"
+
+
+def resolve_task_id(client, *, task_id=None, scenario=None, task_name=None):
+    if task_id is not None:
+        try:
+            return int(task_id)
+        except (TypeError, ValueError):
+            raise PrismaxValidationError(f"task_id must be an integer, got: {task_id!r}") from None
+
+    requested_name = scenario if scenario is not None else task_name
+    normalized_name = _normalize_task_name(requested_name)
+    if not normalized_name:
+        raise PrismaxValidationError("Either task_id or scenario is required.")
+
+    tasks = client.list_tasks()
+    matches = []
+    for task in tasks or []:
+        candidate_values = [
+            task.get("scenario"),
+            task.get("task_name"),
+            task.get("name"),
+            task.get("title"),
+        ]
+        if any(_normalize_task_name(value) == normalized_name for value in candidate_values if value):
+            matches.append(task)
+
+    if not matches:
+        available = ", ".join(_task_display_name(task) for task in (tasks or [])[:10])
+        suffix = f" Available tasks include: {available}." if available else ""
+        raise PrismaxValidationError(
+            f"No task found for scenario/task name: {requested_name!r}.{suffix}"
+        )
+    if len(matches) > 1:
+        choices = ", ".join(f"{_task_display_name(task)} (task_id {task.get('task_id')})" for task in matches)
+        raise PrismaxValidationError(
+            f"Multiple tasks matched scenario/task name {requested_name!r}: {choices}. Use task_id instead."
+        )
+
+    resolved = matches[0].get("task_id")
+    if resolved is None:
+        raise PrismaxValidationError(f"Matched task has no task_id for scenario/task name: {requested_name!r}.")
+    return int(resolved)
+
+
 def upload(
     folder,
     *,
-    task_id,
+    task_id=None,
+    scenario=None,
+    task_name=None,
     serial_number,
     api_key=None,
     base_url=None,
@@ -36,8 +92,6 @@ def upload(
     concurrency=5,
     retries=3,
 ):
-    if task_id is None:
-        raise PrismaxValidationError("task_id is required.")
     if not serial_number:
         raise PrismaxValidationError("serial_number is required.")
     client = PrismaXClient(
@@ -52,6 +106,7 @@ def upload(
     if errors:
         raise PrismaxValidationError("; ".join(errors))
 
+    task_id = resolve_task_id(client, task_id=task_id, scenario=scenario, task_name=task_name)
     keys = episode_keys(files)
     session = client.create_upload_session(
         task_id=task_id,

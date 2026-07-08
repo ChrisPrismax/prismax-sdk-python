@@ -13,7 +13,7 @@ grants a separate commercial license.
 You need:
 
 - a PrismaX upload API key with the `pxu_` prefix
-- a PrismaX task ID
+- a PrismaX task ID or task scenario/name
 - the robot serial number for the machine that produced the data
 
 Create and find these in the PrismaX app:
@@ -22,8 +22,12 @@ Create and find these in the PrismaX app:
 - Upload API key: open <https://app.prismax.ai/account>, go to **API Keys**,
   then create an **Operator / Upload** key. The key is shown once, so copy it
   when it is created.
-- Task ID: open <https://app.prismax.ai/data/upload>, choose the task you want
-  to upload for, and use that task's ID.
+- Task scenario/name: open <https://app.prismax.ai/data/upload> and use the
+  task card title, for example `Pick and place packaged food items`. The SDK
+  resolves this to the database task ID automatically using a case-insensitive
+  match.
+- Task ID: if you already know the numeric database task ID, you can pass it
+  directly instead of the scenario/name.
 - Robot serial number: open <https://app.prismax.ai/account> and use the serial
   number for the registered operator machine that produced the data.
 
@@ -37,7 +41,11 @@ Download API keys are not valid for uploads.
 ```python
 import prismax
 
-result = prismax.upload("./data", task_id=123, serial_number="robot_serial_number")
+result = prismax.upload(
+    "./data",
+    scenario="Pick and place packaged food items",
+    serial_number="robot_serial_number",
+)
 print(result["upload_id"])
 ```
 
@@ -52,11 +60,16 @@ import prismax
 
 result = prismax.upload(
     "./data",
-    task_id=123,
+    scenario="Pick and place packaged food items",
     serial_number="robot_serial_number",
     api_key="pxu_your_upload_api_key",
 )
 ```
+
+You can also pass `task_id=123` instead of `scenario=...`.
+
+By default, the SDK uploads to the PrismaX production data API:
+`https://data.prismaxserver.com`.
 
 ## Expected Folder Structure
 
@@ -126,7 +139,7 @@ right2.mp4
 ## CLI
 
 ```bash
-prismax upload ./data --task-id 123 --serial-number robot_serial_number
+prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number
 prismax status 123
 ```
 
@@ -134,15 +147,15 @@ Use `--wait` to wait for the worker to finish. The default maximum wait time is
 30 minutes.
 
 ```bash
-prismax upload ./data --task-id 123 --serial-number robot_serial_number --wait
-prismax upload ./data --task-id 123 --serial-number robot_serial_number --wait --max-wait 3600
+prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number --wait
+prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number --wait --max-wait 3600
 ```
 
 Useful CLI options:
 
 ```bash
-prismax upload ./data --task-id 123 --serial-number robot_serial_number --timeout 120 --retries 5
-prismax upload ./data --task-id 123 --serial-number robot_serial_number --wait --poll-interval 5 --max-poll-errors 3
+prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number --timeout 120 --retries 5
+prismax upload ./data --scenario "Pick and place packaged food items" --serial-number robot_serial_number --wait --poll-interval 5 --max-poll-errors 3
 ```
 
 ## Status and Resume
@@ -175,7 +188,11 @@ status, create a new upload instead.
 import prismax
 
 try:
-    prismax.upload("./data", task_id=123, serial_number="robot_serial_number")
+    prismax.upload(
+        "./data",
+        scenario="Pick and place packaged food items",
+        serial_number="robot_serial_number",
+    )
 except prismax.PrismaxValidationError as exc:
     print(f"Invalid upload folder: {exc}")
 except prismax.PrismaxAuthError as exc:
