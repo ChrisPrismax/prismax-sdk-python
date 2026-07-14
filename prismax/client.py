@@ -10,8 +10,7 @@ import requests
 from .errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 
 
-# TODO: switch back to https://data.prismaxserver.com after beta SDK validation.
-DEFAULT_BASE_URL = "https://app-prismax-data-pipeline-beta-1053158761087.us-west1.run.app"
+DEFAULT_BASE_URL = "https://data.prismaxserver.com"
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -49,7 +48,9 @@ class PrismaXClient:
         self.api_key = api_key or os.getenv("PRISMAX_API_KEY")
         if require_api_key and not self.api_key:
             raise PrismaxAuthError("api_key is required or PRISMAX_API_KEY must be set.")
-        self.base_url = (base_url or DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = (
+            base_url or os.getenv("PRISMAX_BASE_URL") or DEFAULT_BASE_URL
+        ).rstrip("/")
         _validate_base_url(self.base_url)
         self.timeout = timeout
         self.concurrency = max(1, int(concurrency))

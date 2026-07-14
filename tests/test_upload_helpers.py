@@ -428,10 +428,31 @@ class UploadHelperTests(unittest.TestCase):
         client = PrismaXClient(api_key="pxu_test", base_url="https://data.prismaxserver.com")
         self.assertEqual(client.base_url, "https://data.prismaxserver.com")
 
-    def test_default_base_url_uses_beta_and_env_var_is_not_honored(self):
-        with patch.dict(os.environ, {"PRISMAX_BASE_URL": "http://evil.example.com"}, clear=False):
+    def test_default_base_url_uses_production(self):
+        with patch.dict(os.environ, {}, clear=True):
             client = PrismaXClient(api_key="pxu_test")
-        self.assertEqual(client.base_url, "https://app-prismax-data-pipeline-beta-1053158761087.us-west1.run.app")
+        self.assertEqual(client.base_url, "https://data.prismaxserver.com")
+
+    def test_base_url_uses_environment_configuration(self):
+        with patch.dict(
+            os.environ,
+            {"PRISMAX_BASE_URL": "https://beta.example.test"},
+            clear=False,
+        ):
+            client = PrismaXClient(api_key="pxu_test")
+        self.assertEqual(client.base_url, "https://beta.example.test")
+
+    def test_explicit_base_url_overrides_environment_configuration(self):
+        with patch.dict(
+            os.environ,
+            {"PRISMAX_BASE_URL": "https://beta.example.test"},
+            clear=False,
+        ):
+            client = PrismaXClient(
+                api_key="pxu_test",
+                base_url="https://explicit.example.test",
+            )
+        self.assertEqual(client.base_url, "https://explicit.example.test")
 
     def test_cli_upload_prints_human_summary_by_default(self):
         payload = {

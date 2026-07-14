@@ -42,6 +42,11 @@ export PRISMAX_API_KEY="pxu_your_upload_api_key"
 
 Download API keys are not valid for uploads.
 
+The published SDK defaults to the PrismaX production data API. Internal test
+environments can override the endpoint with `PRISMAX_BASE_URL`; an explicit
+`base_url=` argument takes precedence over the environment variable. Keep beta
+endpoint values in environment configuration rather than source code.
+
 List available scenarios. This does not require an API key:
 
 ```bash
