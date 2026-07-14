@@ -9,7 +9,7 @@ from .scanner import episode_keys, scan_folder, select_primary_video_paths, vali
 from .scenarios import list_scenarios
 from .upload import resume, status, upload, wait_for_upload
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 __all__ = [
     "PrismaXClient",
