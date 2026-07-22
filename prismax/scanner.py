@@ -84,10 +84,14 @@ def scan_folder(folder) -> list[LocalFile]:
 
     files = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file():
-            continue
         relative_path = path.relative_to(root).as_posix()
         if _is_hidden_path(Path(relative_path)):
+            continue
+        if path.is_symlink():
+            raise PrismaxValidationError(
+                f"Symbolic links are not supported: {relative_path}"
+            )
+        if not path.is_file():
             continue
         if relative_path == MANIFEST_FILENAME or relative_path.endswith(f"/{MANIFEST_FILENAME}"):
             continue
@@ -106,6 +110,18 @@ def scan_folder(folder) -> list[LocalFile]:
 def validate_mcap_mp4(files: list[LocalFile]) -> list[str]:
     errors = []
     stats = {}
+    paths_by_casefold = {}
+
+    for item in files:
+        normalized_path = item.relative_path.casefold()
+        previous_path = paths_by_casefold.get(normalized_path)
+        if previous_path is not None and previous_path != item.relative_path:
+            errors.append(
+                "Upload paths must be unique regardless of letter case: "
+                f"{previous_path} and {item.relative_path}"
+            )
+        else:
+            paths_by_casefold[normalized_path] = item.relative_path
 
     def ensure_episode(episode_key):
         if episode_key not in stats:

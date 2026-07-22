@@ -11,9 +11,15 @@ from prismax import cli
 from prismax.client import PrismaXClient
 from prismax.manifest import build_manifest_payload, manifest_placeholder
 from prismax.errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
-from prismax.scanner import episode_keys, scan_folder, select_primary_video_paths, validate_mcap_mp4
+from prismax.scanner import (
+    LocalFile,
+    episode_keys,
+    scan_folder,
+    select_primary_video_paths,
+    validate_mcap_mp4,
+)
 from prismax.scenarios import list_scenarios
-from prismax.upload import resolve_task_id, upload, wait_for_upload
+from prismax.upload import recent_uploads, resolve_task_id, upload, wait_for_upload
 
 
 class UploadHelperTests(unittest.TestCase):
@@ -153,6 +159,32 @@ class UploadHelperTests(unittest.TestCase):
 
             self.assertTrue(any("Only .mp4 files are allowed" in error for error in errors))
 
+    def test_validate_rejects_case_insensitive_path_collision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "video.mp4"
+            source.write_bytes(b"video")
+            files = [
+                LocalFile("1/left.mp4", source, 5, "video/mp4"),
+                LocalFile("1/LEFT.mp4", source, 5, "video/mp4"),
+            ]
+            errors = validate_mcap_mp4(files)
+
+            self.assertTrue(any("regardless of letter case" in error for error in errors))
+
+    def test_scan_folder_rejects_symbolic_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "1").mkdir()
+            target = root / "source.mp4"
+            target.write_bytes(b"video")
+            (root / "1" / "high.mp4").symlink_to(target)
+
+            with self.assertRaises(PrismaxValidationError) as ctx:
+                scan_folder(root)
+
+            self.assertIn("Symbolic links are not supported", str(ctx.exception))
+
     def test_validate_rejects_nested_folders(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -249,6 +281,21 @@ class UploadHelperTests(unittest.TestCase):
         self.assertEqual(kwargs["json"]["serial_number"], "MD100101000019205Z00082")
         self.assertNotIn("machine_id", kwargs["json"])
         self.assertRegex(kwargs["headers"]["User-Agent"], r"^prismax-sdk/")
+        self.assertEqual(kwargs["timeout"], 300)
+
+    def test_regular_api_requests_keep_standard_timeout(self):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {
+            "success": True,
+            "data": {"upload_id": 123},
+        }
+
+        with patch("prismax.client.requests.request", return_value=mock_response) as request_mock:
+            client = PrismaXClient(api_key="pxu_test", base_url="https://example.test")
+            client.get_upload(123)
+
+        self.assertEqual(request_mock.call_args.kwargs["timeout"], 60)
 
     def test_client_wraps_request_exceptions(self):
         client = PrismaXClient(api_key="pxu_test", base_url="https://example.test")
@@ -259,6 +306,30 @@ class UploadHelperTests(unittest.TestCase):
 
         self.assertIn("PrismaX API request failed", str(ctx.exception))
         self.assertIsInstance(ctx.exception.__cause__, requests.Timeout)
+
+    def test_recent_uploads_uses_upload_list_endpoint(self):
+        mock_response = Mock()
+        mock_response.ok = True
+        mock_response.json.return_value = {
+            "success": True,
+            "data": [{"upload_id": 342, "status": "UPLOADING"}],
+        }
+
+        with patch("prismax.client.requests.request", return_value=mock_response) as request_mock:
+            result = recent_uploads(
+                limit=5,
+                api_key="pxu_test",
+                base_url="https://example.test",
+            )
+
+        self.assertEqual(result, [{"upload_id": 342, "status": "UPLOADING"}])
+        args, kwargs = request_mock.call_args
+        self.assertEqual(args[:2], ("GET", "https://example.test/v1/data/uploads"))
+        self.assertEqual(kwargs["params"], {"limit": 5})
+
+    def test_recent_uploads_rejects_invalid_limit(self):
+        with self.assertRaises(PrismaxValidationError):
+            recent_uploads(limit=0, api_key="pxu_test")
 
     def test_client_raises_auth_error_for_unauthorized_responses(self):
         mock_response = Mock()
@@ -328,6 +399,23 @@ class UploadHelperTests(unittest.TestCase):
                         content_type="video/mp4",
                         relative_path="1/left.mp4",
                     )
+
+        self.assertIn("1/left.mp4", str(ctx.exception))
+
+    def test_upload_file_wraps_missing_local_file(self):
+        client = PrismaXClient(
+            api_key="pxu_test",
+            base_url="https://example.test",
+            retries=1,
+        )
+
+        with self.assertRaises(PrismaxApiError) as ctx:
+            client.upload_file_to_signed_url(
+                signed_url="https://storage.example.test/upload",
+                path="/path/that/no-longer-exists.mp4",
+                content_type="video/mp4",
+                relative_path="1/left.mp4",
+            )
 
         self.assertIn("1/left.mp4", str(ctx.exception))
 
@@ -428,10 +516,13 @@ class UploadHelperTests(unittest.TestCase):
         client = PrismaXClient(api_key="pxu_test", base_url="https://data.prismaxserver.com")
         self.assertEqual(client.base_url, "https://data.prismaxserver.com")
 
-    def test_default_base_url_uses_production(self):
+    def test_default_base_url_uses_beta(self):
         with patch.dict(os.environ, {}, clear=True):
             client = PrismaXClient(api_key="pxu_test")
-        self.assertEqual(client.base_url, "https://data.prismaxserver.com")
+        self.assertEqual(
+            client.base_url,
+            "https://app-prismax-data-pipeline-beta-1053158761087.us-west1.run.app",
+        )
 
     def test_base_url_uses_environment_configuration(self):
         with patch.dict(
@@ -515,6 +606,25 @@ class UploadHelperTests(unittest.TestCase):
         self.assertEqual(
             [call.args[0] for call in print_mock.call_args_list],
             ["Pick and place packaged food items", "Warehouse sorting"],
+        )
+
+    def test_cli_uploads_prints_recent_uploads(self):
+        uploads = [{
+            "upload_id": 342,
+            "status": "UPLOADING",
+            "created_at": "Wed, 08 Jul 2026 22:53:00 GMT",
+            "scenario": "Put away messy clothes",
+        }]
+
+        with patch("prismax.cli.recent_uploads", return_value=uploads), patch(
+            "builtins.print"
+        ) as print_mock:
+            exit_code = cli.main(["uploads", "--limit", "5"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            print_mock.call_args_list[0].args[0],
+            "342 | UPLOADING | Wed, 08 Jul 2026 22:53:00 GMT | Put away messy clothes",
         )
 
 

@@ -10,7 +10,10 @@ import requests
 from .errors import PrismaxApiError, PrismaxAuthError, PrismaxValidationError
 
 
-DEFAULT_BASE_URL = "https://data.prismaxserver.com"
+DEFAULT_BASE_URL = (
+    "https://app-prismax-data-pipeline-beta-1053158761087.us-west1.run.app"
+)
+DEFAULT_SESSION_TIMEOUT = 300
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -41,6 +44,7 @@ class PrismaXClient:
         api_key=None,
         base_url=None,
         timeout=60,
+        session_timeout=DEFAULT_SESSION_TIMEOUT,
         concurrency=5,
         retries=3,
         require_api_key=True,
@@ -53,6 +57,7 @@ class PrismaXClient:
         ).rstrip("/")
         _validate_base_url(self.base_url)
         self.timeout = timeout
+        self.session_timeout = session_timeout
         self.concurrency = max(1, int(concurrency))
         self.retries = max(1, int(retries))
 
@@ -65,14 +70,14 @@ class PrismaXClient:
             headers["X-API-Key"] = self.api_key
         return headers
 
-    def _request(self, method, path, **kwargs):
+    def _request(self, method, path, *, request_timeout=None, **kwargs):
         url = f"{self.base_url}{path}"
         try:
             response = requests.request(
                 method,
                 url,
                 headers=self._headers(),
-                timeout=self.timeout,
+                timeout=self.timeout if request_timeout is None else request_timeout,
                 **kwargs,
             )
         except requests.RequestException as exc:
@@ -94,6 +99,7 @@ class PrismaXClient:
         return self._request(
             "POST",
             "/v1/data/upload-sessions",
+            request_timeout=self.session_timeout,
             json={
                 "task_id": task_id,
                 "serial_number": serial_number,
@@ -105,6 +111,7 @@ class PrismaXClient:
         return self._request(
             "POST",
             f"/v1/data/upload-sessions/{upload_id}/resume",
+            request_timeout=self.session_timeout,
             json={"files": files},
         )
 
@@ -113,6 +120,13 @@ class PrismaXClient:
 
     def get_upload(self, upload_id):
         return self._request("GET", f"/v1/data/uploads/{upload_id}")
+
+    def list_uploads(self, *, limit=10):
+        return self._request(
+            "GET",
+            "/v1/data/uploads",
+            params={"limit": limit},
+        )
 
     def upload_file_to_signed_url(self, *, signed_url, path, content_type, relative_path=None):
         display_path = relative_path or path
@@ -128,7 +142,7 @@ class PrismaXClient:
                 if response.ok:
                     return
                 message = f"Upload failed with status {response.status_code}: {response.text[:200]}"
-            except requests.RequestException as exc:
+            except (OSError, requests.RequestException) as exc:
                 message = str(exc)
 
             if attempt == self.retries:
@@ -155,19 +169,21 @@ class PrismaXClient:
                 raise PrismaxApiError(message)
             time.sleep(min(2 ** attempt, 10))
 
-    def upload_files(self, upload_items):
+    def upload_files(self, upload_items, on_file_complete=None):
         if not upload_items:
             return
         with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
-            futures = [
+            futures = {
                 executor.submit(
                     self.upload_file_to_signed_url,
                     signed_url=item["signed_url"],
                     path=item["path"],
                     content_type=item["content_type"],
                     relative_path=item.get("relative_path"),
-                )
+                ): item
                 for item in upload_items
-            ]
+            }
             for future in as_completed(futures):
                 future.result()
+                if on_file_complete:
+                    on_file_complete(futures[future])
